@@ -1,5 +1,8 @@
 import asyncio
 import aiohttp
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 
 async def download_huge_file(condition):
@@ -7,26 +10,26 @@ async def download_huge_file(condition):
     download_url = 'https://www.mdbg.net/chinese/export/cedict/cedict_1_0_ts_utf-8_mdbg.zip'
     async with condition:
         async with aiohttp.ClientSession() as session:
-            print("Download started")
+            logging.info("Download started")
             async with session.get(download_url) as response:
                 content = await response.read()
-                print("Download complete")
+                logging.info("Download complete")
                 condition.notify_all()
                 return content
 
 
 async def coroutine_one(condition):
     async with condition:
-        print("[coroutine one] Condition aquired, waiting for event")
+        logging.info("[coroutine one] Condition aquired, waiting for event")
         await condition.wait()
-        print("[coroutine one] Event triggered")
+        logging.info("[coroutine one] Event triggered")
 
 
 async def coroutine_two(condition):
     async with condition:
-        print("[coroutine two] Condition aquired, waiting for event")
+        logging.info("[coroutine two] Condition aquired, waiting for event")
         await condition.wait()
-        print("[coroutine two] Event triggered")
+        logging.info("[coroutine two] Event triggered")
 
 
 async def main():
