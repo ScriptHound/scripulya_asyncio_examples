@@ -2,6 +2,20 @@ from tkinter import *
 import tkinter as tk
 import asyncio
 import time
+import json
+import base64
+
+
+def decode_dict(bytes_in: bytes):
+    json_data = base64.b64decode(bytes_in)
+    data_dict = json.loads(json_data)
+    return data_dict
+
+
+def encode_dict(data: dict):
+    json_data = json.dumps(data).encode()
+    return base64.b64encode(json_data) + b"\r\n"
+
 
 class Application(tk.Frame):
     def __init__(self, root=None, callback=None):
@@ -38,9 +52,7 @@ class Application(tk.Frame):
         self.message_entry.grid(row=6, column=0, padx=5, pady=5, columnspan=4, sticky=N + S + W + E)
 
     def set_username(self, username):
-        print(self.username_entry.get())
         if self.username_entry.get() != username:
-            print(username)
             self.username_entry.insert(0, username)
 
     def save_username(self):
@@ -51,18 +63,20 @@ class Application(tk.Frame):
 
     def insert_message(self, message):
         self.chat_text_box.config(state=NORMAL)
+        self.chat_text_box.delete("1.0", "2.0")
         self.chat_text_box.insert(END, f"{message}\n")
+        self.chat_text_box.see(END)
         self.chat_text_box.config(state=DISABLED)
 
 
-
-class AsncClient:
+class asyncClient:
     def __init__(self, app):
         self.app = app
         self.work_client = True
+        self.reader = None
+        self.writer = None
 
     async def _tk_application_loop(self):
-        global _default_root
         while self.work_client:
             try:
                 self.app.update()
@@ -70,23 +84,30 @@ class AsncClient:
             except:
                 self.work_client = False
 
-    async def test_loop(self):
-        asyncio.create_task(self._tk_application_loop())
+    async def test_insert_text(self):
         while self.work_client:
-            self.app.insert_message(str(time.time()))
+            self.app.insert_message(f"{time.time()}")
             await asyncio.sleep(1)
 
+    async def send_data(self, data: dict):
+        self.writer.write()
 
-async def loop_main(app):
-    while True:
-        app.set_username("test")
-        app.update()
-        await asyncio.sleep(0)
+    async def receive_data(self):
+        while self.work_client:
+            message = decode_dict(await self.reader.readline())
+            print(message)
+
+    async def connect_to_server(self, address, port):
+        asyncio.create_task(self._tk_application_loop())
+        asyncio.create_task(self.test_insert_text())
+        self.reader, self.writer = await asyncio.open_connection(address, port)
+        asyncio.create_task(self.receive_data())
+        while self.work_client:
+            await asyncio.sleep(1)
 
 
 root = tk.Tk()
 app_tk = Application(root=root)
 
-async_client = AsncClient(app_tk)
-
-asyncio.run(async_client.test_loop())
+async_client = asyncClient(app_tk)
+asyncio.run(async_client.connect_to_server("127.0.0.1", 8888))
