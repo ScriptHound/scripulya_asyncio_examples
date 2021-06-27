@@ -5,7 +5,8 @@ import sys
 import json
 import base64
 
-logging.basicConfig(format="\033[36m %(asctime)s - %(name)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    format="\033[36m %(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
@@ -21,9 +22,15 @@ def encode_dict(data: dict):
     return base64.b64encode(json_data) + b"\r\n"
 
 
+
 class ServerChat:
     def __init__(self):
+        self.commands = {}
+        self.users_count = 1
         self.list_user = {}
+
+    def add_to_commands(func, self=None):
+        print(func)
 
     async def send_all_exclude_user(self, data_dict, username_not_send):
         logger.info(f'send data to all user: {data_dict}')
@@ -32,15 +39,12 @@ class ServerChat:
                 writer.write(encode_dict(data_dict))
                 await writer.drain()
 
-    async def user_exit(self, username, message):
-        if message.replace("\r\n", "") == "^]":
-            user_write = self.list_user.pop(username)
-            user_write.write(encode_dict({"disconnect_you": True}))
-            user_write.close()
-            await self.send_all_exclude_user({"user_left_chat": username}, None)
-            return True
-        else:
-            return False
+    async def user_exit(self, username):
+        user_write = self.list_user.pop(username)
+        user_write.write(encode_dict({"disconnect_you": True}))
+        user_write.close()
+        await self.send_all_exclude_user({"user_left_chat": username}, None)
+        return True
 
     async def user_disconnected(self, username, reader):
         if reader.at_eof():
@@ -53,36 +57,39 @@ class ServerChat:
             return False
 
     async def wait_message(self, writer, reader, username):
-        data_bytes = await reader.readline()
-        message = data_bytes.decode()
-        if not await self.user_exit(username, message) and not await self.user_disconnected(username, reader):
-            await self.send_all_exclude_user(f"{username}: {message}", username)
+        data_obj = decode_dict(await reader.readline())
+        if await self.command_reader(data_obj, username, writer, reader):
             asyncio.create_task(self.wait_message(writer, reader, username))
 
-    async def prepare_data(self, ):
+    async def command_reader(self, data_obj, username, writer, reader):
+        commands = {
+            "send_message": self.send_message
+        }
+        if await self.user_disconnected(username, reader):
+            return False
+        if "disconnect_me" in data_obj:
+            await self.user_exit(username)
+            return False
+
         pass
 
-    async def get_username(self, reader, writer):
-        logger.info(f'Send username')
-        writer.write(encode_dict({"set_username": "test_name_1"}))
-        await writer.drain()
-        data_bytes = await reader.readline()
-        username = data_bytes.decode().replace("\r\n", "")
-        if username in self.list_user:
-            writer.write(b"Sorry this username is busy!\r\n")
-            await writer.drain()
-            writer.close()
-            return
+    async def send_message(self, data_obj):
+        print(data_obj)
 
-        writer.write(b"To exit type '^]' \r\n")
-        await writer.drain()
+    async def first_connection(self, reader, writer):
+        username = f"User {self.users_count}"
+        self.users_count += 1
+        logger.info(f'Send username')
+        writer.write(encode_dict({"set_username": username}))
+
         self.list_user.update({username: writer})
-        await self.send_all_exclude_user({"user_connect_to_chat": username}, None)
+        await self.send_all_exclude_user({"user_connect_to_chat": username},
+                                         None)
         asyncio.create_task(self.wait_message(writer, reader, username))
 
     async def handle_connection(self, reader, writer):
         logger.info(f'Handle incoming connection')
-        await self.get_username(reader, writer)
+        await self.first_connection(reader, writer)
 
 
 async def main():
