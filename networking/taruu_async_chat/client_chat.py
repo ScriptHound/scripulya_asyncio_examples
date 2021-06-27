@@ -18,9 +18,9 @@ def encode_dict(data: dict):
 
 
 class Application(tk.Frame):
-    def __init__(self, root=None, callback=None):
+    def __init__(self, root=None, send_data=None):
         super().__init__(root)
-        self.callback = callback
+        self.send_data = send_data
         self.root = root
         # self.root.geometry('500x500')
         self.root.title("Chat demo")
@@ -64,13 +64,15 @@ class Application(tk.Frame):
         if self.username_entry.get() != username:
             self.username_entry.insert(0, username)
 
-
-
     def save_username(self):
         print("save username")
 
     def send_message(self):
-        print("send message")
+        message = self.message_entry.get()
+        self.insert_message(f"You: {message}")
+        asyncio.create_task(
+            self.send_data({"message": {"text": message}}))
+        self.message_entry.delete(0, len(message))
 
     def insert_message(self, message):
         self.chat_text_box.config(state=NORMAL)
@@ -83,9 +85,14 @@ class Application(tk.Frame):
 class asyncClient:
     def __init__(self, app):
         self.app = app
+        self.app.send_data = self.send_data
         self.work_client = True
         self.reader = None
         self.writer = None
+        self.commands = {
+            "message": self._recive_message,
+            "set_username": self._set_message
+        }
 
     async def _tk_application_loop(self):
         while self.work_client:
@@ -95,30 +102,33 @@ class asyncClient:
             except:
                 self.work_client = False
 
-    async def test_insert_text(self):
-        while self.work_client:
-            self.app.insert_message(f"{time.time()}")
-            await asyncio.sleep(1)
+    def _recive_message(self, data_obj):
+        message_obj = data_obj["message"]
+        message = f"{message_obj['username']} :{message_obj['text']}"
+        self.app.insert_message(message)
 
-
-    async def command_reader(self, data_command):
-        if "set_username" in data_command:
-            self.app.set_username(data_command["set_username"])
-        pass
-        #commands = {"set_username" : }
+    def _set_message(self, data_obj):
+        self.app.insert_message(data_obj["set_username"])
+        
+    async def command_reader(self, data_obj):
+        """Выполняем команды"""
+        key = list(data_obj.keys())[0]
+        print(key)
+        command_func = self.commands.get(key)
+        command_func(data_obj)
+        return True
 
     async def send_data(self, data: dict):
-        self.writer.write()
+        self.writer.write(encode_dict(data))
 
     async def receive_data(self):
         while self.work_client:
             data_obj = decode_dict(await self.reader.readline())
+            print('data_obj', data_obj)
             await self.command_reader(data_obj)
-            print(data_obj)
 
     async def connect_to_server(self, address, port):
         asyncio.create_task(self._tk_application_loop())
-        asyncio.create_task(self.test_insert_text())
         self.reader, self.writer = await asyncio.open_connection(address, port)
         asyncio.create_task(self.receive_data())
         while self.work_client:

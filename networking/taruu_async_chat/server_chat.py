@@ -22,17 +22,31 @@ def encode_dict(data: dict):
     return base64.b64encode(json_data) + b"\r\n"
 
 
+# def add_to_commands(dictionary):
+#     def decorate(func):
+#         dictionary.update({func.__name__: func})
+#
+#         def wrapper(*args, **kwargs):
+#             return_value = func(*args, **kwargs)
+#             return return_value
+#
+#         return wrapper
+#
+#     return decorate
+
 
 class ServerChat:
     def __init__(self):
-        self.commands = {}
+        self.commands = {
+            "message": self.send_message,
+            "set_username": "",
+            "list_users": ""
+
+        }
         self.users_count = 1
         self.list_user = {}
 
-    def add_to_commands(func, self=None):
-        print(func)
-
-    async def send_all_exclude_user(self, data_dict, username_not_send):
+    async def send_data_users(self, data_dict, username_not_send):
         logger.info(f'send data to all user: {data_dict}')
         for username, writer in self.list_user.items():
             if username != username_not_send:
@@ -43,7 +57,7 @@ class ServerChat:
         user_write = self.list_user.pop(username)
         user_write.write(encode_dict({"disconnect_you": True}))
         user_write.close()
-        await self.send_all_exclude_user({"user_left_chat": username}, None)
+        await self.send_data_users({"user_left_chat": username}, None)
         return True
 
     async def user_disconnected(self, username, reader):
@@ -51,40 +65,51 @@ class ServerChat:
             logger.info(f'{username} disconnected.')
             user_write = self.list_user.pop(username)
             user_write.close()
-            await self.send_all_exclude_user({"user_left_chat": username}, None)
+            await self.send_data_users({"user_left_chat": username}, None)
             return True
         else:
             return False
 
     async def wait_message(self, writer, reader, username):
-        data_obj = decode_dict(await reader.readline())
+        """Ждем сообщения от юзеря"""
+        in_bytes = await reader.readline()
+        logging.info(f'{in_bytes}')
+        data_obj = decode_dict(in_bytes)
         if await self.command_reader(data_obj, username, writer, reader):
             asyncio.create_task(self.wait_message(writer, reader, username))
 
     async def command_reader(self, data_obj, username, writer, reader):
-        commands = {
-            "send_message": self.send_message
-        }
+        """Выполняем команды"""
         if await self.user_disconnected(username, reader):
             return False
-        if "disconnect_me" in data_obj:
+        if "disconnect" in data_obj:
             await self.user_exit(username)
             return False
 
-        pass
+        key = list(data_obj.keys())[0]
+        command_func = self.commands.get(key)
+        asyncio.create_task(command_func(data_obj, username))
+        return True
 
-    async def send_message(self, data_obj):
-        print(data_obj)
+    async def send_message(self, data_obj, username):
+        data_obj = {"message": {
+            "username": username,
+            "text": data_obj["message"]["text"]
+        }}
+        await self.send_data_users(data_obj, None)
 
     async def first_connection(self, reader, writer):
+        """Первое подключение клиенту к серверу"""
         username = f"User {self.users_count}"
         self.users_count += 1
         logger.info(f'Send username')
+        # Даем обидное имя юзерю
         writer.write(encode_dict({"set_username": username}))
-
+        # добавяем юзеря в список
         self.list_user.update({username: writer})
-        await self.send_all_exclude_user({"user_connect_to_chat": username},
-                                         None)
+        await self.send_data_users(
+            {"user_connect_to_chat": username},
+            username)  # шлем всем клиентам что у нас новый юзер!
         asyncio.create_task(self.wait_message(writer, reader, username))
 
     async def handle_connection(self, reader, writer):
