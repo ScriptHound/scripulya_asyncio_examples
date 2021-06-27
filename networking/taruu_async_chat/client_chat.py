@@ -22,7 +22,7 @@ class Application(tk.Frame):
         super().__init__(root)
         self.send_data = send_data
         self.root = root
-        # self.root.geometry('500x500')
+        self.list_users_dict = {}
         self.root.title("Chat demo")
 
         self.chat_text_box = Text(width=50, height=30)
@@ -59,27 +59,54 @@ class Application(tk.Frame):
         self.message_entry.grid(row=6, column=0, padx=5, pady=5, columnspan=4,
                                 sticky=N + S + W + E)
 
-    def set_username(self, username):
-        self.users_list_box.insert(0, f"{username} (You)")
-        if self.username_entry.get() != username:
-            self.username_entry.insert(0, username)
-
-    def save_username(self):
-        print("save username")
-
-    def send_message(self):
-        message = self.message_entry.get()
-        self.insert_message(f"You: {message}")
-        asyncio.create_task(
-            self.send_data({"message": {"text": message}}))
-        self.message_entry.delete(0, len(message))
-
-    def insert_message(self, message):
+    def _insert_message(self, message):
         self.chat_text_box.config(state=NORMAL)
         self.chat_text_box.delete("1.0", "2.0")
         self.chat_text_box.insert(END, f"{message}\n")
         self.chat_text_box.see(END)
         self.chat_text_box.config(state=DISABLED)
+
+    def _set_username(self, username):
+        self.users_list_box.insert(0, f"{username} (You)")
+        self.username_entry.insert(END, username)
+        print(self.users_list_box.get(0, END))
+
+    def _add_user(self, username):
+        self.users_list_box.insert(END, f"{username}")
+
+    def _remove_user(self, username):
+        list_users = {}
+        [list_users.update(
+            {user: i}) for i, user in list(self.users_list_box.get(1, END))]
+        id_user_to_remove = list_users.get(username)
+        self.users_list_box.delete(id_user_to_remove)
+
+    def send_message(self):
+        message = self.message_entry.get()
+        asyncio.create_task(
+            self.send_data(
+                {"command": "message",
+                 "data": {"content": message}}
+            ))
+        self.message_entry.delete(0, len(message))
+
+    def save_username(self):
+        print("save username")
+
+    def list_users(self, list_users):
+        list_users =
+        old_list_users = list(self.users_list_box.get(1, END))
+        [self._add_user(user) for user in list_users
+         if user not in old_list_users]
+        [self.users_list_box.delete(i) for i, user in enumerate(old_list_users)
+         if user not in list_users]
+
+    def write_message(self, data_obj):
+        message = f"{data_obj['username']} :{data_obj['content']}"
+        self._insert_message(message)
+
+    def set_username(self, username):
+        self._set_username(username)
 
 
 class asyncClient:
@@ -90,8 +117,9 @@ class asyncClient:
         self.reader = None
         self.writer = None
         self.commands = {
-            "message": self._recive_message,
-            "set_username": self._set_message
+            "message": self.app.write_message,
+            "get_username": self.app.set_username,
+            "list_users": self.app.list_users
         }
 
     async def _tk_application_loop(self):
@@ -102,20 +130,11 @@ class asyncClient:
             except:
                 self.work_client = False
 
-    def _recive_message(self, data_obj):
-        message_obj = data_obj["message"]
-        message = f"{message_obj['username']} :{message_obj['text']}"
-        self.app.insert_message(message)
-
-    def _set_message(self, data_obj):
-        self.app.insert_message(data_obj["set_username"])
-        
     async def command_reader(self, data_obj):
         """Выполняем команды"""
-        key = list(data_obj.keys())[0]
-        print(key)
+        key = data_obj["command"]
         command_func = self.commands.get(key)
-        command_func(data_obj)
+        command_func(data_obj["result"])
         return True
 
     async def send_data(self, data: dict):
@@ -124,7 +143,6 @@ class asyncClient:
     async def receive_data(self):
         while self.work_client:
             data_obj = decode_dict(await self.reader.readline())
-            print('data_obj', data_obj)
             await self.command_reader(data_obj)
 
     async def connect_to_server(self, address, port):
