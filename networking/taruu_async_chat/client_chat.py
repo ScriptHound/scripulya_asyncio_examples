@@ -58,6 +58,7 @@ class Application(tk.Frame):
         self.message_entry = Entry()
         self.message_entry.grid(row=6, column=0, padx=5, pady=5, columnspan=4,
                                 sticky=N + S + W + E)
+        self.message_entry.bind("<Return>", self.send_message_enter)
 
     def _insert_message(self, message):
         self.chat_text_box.config(state=NORMAL)
@@ -67,9 +68,10 @@ class Application(tk.Frame):
         self.chat_text_box.config(state=DISABLED)
 
     def _set_username(self, username):
+        self.users_list_box.delete(0)
         self.users_list_box.insert(0, f"{username} (You)")
+        self.username_entry.delete(0, END)
         self.username_entry.insert(END, username)
-        print(self.users_list_box.get(0, END))
 
     def _add_user(self, username):
         self.users_list_box.insert(END, f"{username}")
@@ -81,21 +83,35 @@ class Application(tk.Frame):
         id_user_to_remove = list_users.get(username)
         self.users_list_box.delete(id_user_to_remove)
 
+    def send_message_enter(self, event):
+        self.send_message()
+
     def send_message(self):
         message = self.message_entry.get()
-        asyncio.create_task(
-            self.send_data(
-                {"command": "message",
-                 "data": {"content": message}}
-            ))
+        if message:
+            asyncio.create_task(
+                self.send_data(
+                    {"command": "message",
+                     "data": {"content": message}}
+                ))
         self.message_entry.delete(0, len(message))
 
     def save_username(self):
+        username = self.username_entry.get()
+        if username:
+            self._set_username(username)
+            asyncio.create_task(
+                self.send_data(
+                    {"command": "set_username",
+                     "data": username}
+                ))
         print("save username")
 
     def list_users(self, list_users):
-        list_users =
+        list_users.pop(list_users.index(self.username_entry.get()))
         old_list_users = list(self.users_list_box.get(1, END))
+        print(list_users)
+        print(old_list_users)
         [self._add_user(user) for user in list_users
          if user not in old_list_users]
         [self.users_list_box.delete(i) for i, user in enumerate(old_list_users)
