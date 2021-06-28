@@ -122,17 +122,24 @@ class ServerChat:
             return
         logging.info(f'{in_bytes}')
         data_obj = decode_dict(in_bytes)
-        if await self._command_reader(data_obj, username, writer, reader):
-            asyncio.create_task(self._wait_message(writer, reader, username))
+        print("message")
+        await self._command_reader(data_obj, username, writer, reader)
 
     async def _command_reader(self, data_obj, username, writer, reader):
         """Выполняем команды"""
+        print("Commands", data_obj)
         if "disconnect" == data_obj["command"]:
             await self.user_exit(username)
             asyncio.create_task(self.list_users())
             return False
-        command_func = self.commands.get(data_obj["command"])
-        asyncio.create_task(command_func(data_obj["data"], username))
+        elif "message" == data_obj["command"]:
+            asyncio.create_task(self.send_message(data_obj["data"], username))
+            asyncio.create_task(
+                self._wait_message(writer, reader, username))
+        elif "set_username" == data_obj["command"]:
+            asyncio.create_task(self.set_username(data_obj["data"], username))
+            asyncio.create_task(
+                self._wait_message(writer, reader, data_obj["data"]))
         return True
 
     async def handle_connection(self, reader, writer):
