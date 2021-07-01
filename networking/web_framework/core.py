@@ -3,10 +3,15 @@ import re
 import logging
 
 import webob
-from http_parser.pyparser import HttpParser
 FORMAT = 'LOGGING %(asctime)-15s | %(message)s'
 logging.basicConfig(level=logging.INFO, format=FORMAT)
 VIEWS_MAPPING = {}
+
+
+# запросы тут идут от main до миддлвари, которая потом
+# распределяет запросы по вьюшкам. А чтобы можно было
+# понять куда какой запрос должен идти есть VIEWS_MAPPING,
+# в котором прописаны пары {путь: вьюшка}
 
 
 def add_route(route):
@@ -20,6 +25,10 @@ def add_route(route):
 
 
 async def middleware(reader, writer):
+    # очень важно, чтобы было конечное число в read,
+    # иначе функция застрянет в бесконечном цикле
+    # TODO вроде есть метод через while, но at_eof и просто
+    # проверка на конец буфера не помогли
     request_data = await reader.read(1024)
 
     path, _ = request_data.split(b'\r\n', 1)
@@ -31,6 +40,7 @@ async def middleware(reader, writer):
         body = None
     logging.info(f'Request to: {path}')
 
+    # тут происходит распределение по вьюшкам и передача запроса
     callback = VIEWS_MAPPING[path.decode()]
     body = await callback({'body': body, 'method': method})
 
