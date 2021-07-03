@@ -42,27 +42,25 @@ user_disconnected - пользователь отключился
 
 class ServerChat:
     def __init__(self):
-        self.commands = {
-            "message": self.send_message,
-            "set_username": self.set_username
-        }
         self.users_count = 1
         self.list_user = {}
 
-    async def send_data_users(self, data_dict, username_not_send):
+    async def _send_data_users(self, data_dict):
+        """Отправить данные всем пользователям"""
         logger.info(f'send data to all user: {data_dict}')
-        for username, writer in self.list_user.items():
-            if username != username_not_send:
-                writer.write(encode_dict(data_dict))
-                await writer.drain()
+        ready_data = encode_dict(data_dict)
+        for writer in self.list_user.values():
+            writer.write(ready_data)
+            await writer.drain()
 
     async def user_exit(self, username):
+        """Если пользовател вышел из чата"""
         user_write = self.list_user.pop(username)
         user_write.close()
         data_obj = {"command": "message",
                     "result": {"username": "SERVER",
                                "content": f"User {username} left chat"}}
-        asyncio.create_task(self.send_data_users(data_obj, None))
+        asyncio.create_task(self._send_data_users(data_obj))
         asyncio.create_task(self.list_users())
         return True
 
@@ -76,14 +74,14 @@ class ServerChat:
             data_obj = {"command": "message",
                         "result": {"username": "SERVER",
                                    "content": f"User {username} left chat"}}
-            asyncio.create_task(self.send_data_users(data_obj, None))
+            asyncio.create_task(self._send_data_users(data_obj))
             asyncio.create_task(self.list_users())
             return True
         else:
             return False
 
     async def send_message(self, data_obj, username):
-        """Отправить всем сообщение"""
+        """Отправить сообщение"""
         data_obj = {
             "command": "message",
             "result": {
@@ -91,9 +89,10 @@ class ServerChat:
                 "content": data_obj["content"]
             }
         }
-        await self.send_data_users(data_obj, None)
+        await self._send_data_users(data_obj)
 
     async def set_username(self, new_username, username):
+        """Пользователь поменял ник"""
         old_username = username
         writer = self.list_user.pop(username)
         self.list_user.update({new_username: writer})
@@ -105,14 +104,14 @@ class ServerChat:
                     f"user {old_username} change to f{new_username}"
             }
         }
-        asyncio.create_task(self.send_data_users(data_obj, None))
+        asyncio.create_task(self._send_data_users(data_obj))
         asyncio.create_task(self.list_users())
 
     async def list_users(self):
         """список всех пользователей"""
         data_obj = {"command": "list_users",
                     "result": list(self.list_user.keys())}
-        await self.send_data_users(data_obj, None)
+        await self._send_data_users(data_obj)
 
     async def _wait_message(self, writer, reader, username):
         """Ждем сообщения от юзеря"""
@@ -122,12 +121,10 @@ class ServerChat:
             return
         logging.info(f'{in_bytes}')
         data_obj = decode_dict(in_bytes)
-        print("message")
         await self._command_reader(data_obj, username, writer, reader)
 
     async def _command_reader(self, data_obj, username, writer, reader):
         """Выполняем команды"""
-        print("Commands", data_obj)
         if "disconnect" == data_obj["command"]:
             await self.user_exit(username)
             asyncio.create_task(self.list_users())
@@ -145,7 +142,6 @@ class ServerChat:
     async def handle_connection(self, reader, writer):
         """Первое подключение клиенту к серверу"""
         logger.info(f'Handle incoming connection')
-
         username = f"User {self.users_count}"
         self.users_count += 1
         logger.info(f'Send username')

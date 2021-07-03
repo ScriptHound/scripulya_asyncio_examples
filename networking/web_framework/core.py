@@ -29,7 +29,8 @@ async def middleware(reader, writer):
     # иначе функция застрянет в бесконечном цикле
     # TODO вроде есть метод через while, но at_eof и просто
     # проверка на конец буфера не помогли
-    request_data = await reader.read(1024)
+    request_data = await reader.readuntil(separator=b"\r\n\r\n")
+    logging.info(request_data)
 
     path, _ = request_data.split(b'\r\n', 1)
     method = re.search(br'^(.*?)\s', path).group(1).decode()
