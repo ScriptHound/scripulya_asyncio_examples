@@ -12,33 +12,16 @@ logger.setLevel(logging.INFO)
 
 
 def decode_dict(bytes_in: bytes):
+    """Расшифруем словарь"""
     json_data = base64.b64decode(bytes_in)
     data_dict = json.loads(json_data)
     return data_dict
 
 
 def encode_dict(data: dict):
+    """Зашифруем словарь"""
     json_data = json.dumps(data).encode()
     return base64.b64encode(json_data) + b"\r\n"
-
-
-# все команды
-"""
-disconnect - отключится
-message - сообщение
-set_username - поменять совй ник
-list_users - список пользователей
-
-"""
-
-"""
-Результаты:
-get_username - полчить 
-message - сообщение пришло
-list_users - список пользователей
-user_disconnected - пользователь отключился
-"""
-
 
 class ServerChat:
     def __init__(self):
