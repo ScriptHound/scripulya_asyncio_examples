@@ -1,9 +1,8 @@
 import asyncio
+import base64
+import json
 import logging
 import logging.handlers
-import sys
-import json
-import base64
 
 logging.basicConfig(
     format="\033[36m %(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -20,8 +19,27 @@ def decode_dict(bytes_in: bytes):
 
 def encode_dict(data: dict):
     """Зашифруем словарь"""
+    # print("encode", data)
+    data = dict(data)
     json_data = json.dumps(data).encode()
     return base64.b64encode(json_data) + b"\r\n"
+
+
+class Reply:
+    def __init__(self, command, data=None, message=None, username=None):
+        self.command = command
+        if data:
+            self.result = data
+        if message:
+            self.result = {"content": message}
+        if username:
+            self.result.update({"username": username})
+
+    def __iter__(self):
+        return iter(self.__dict__.items())
+
+    def __repr__(self):
+        return json.dumps(self.__dict__)
 
 
 class ServerChat:
@@ -47,9 +65,8 @@ class ServerChat:
         """Если пользовател вышел из чата"""
         user_write = self.list_user.pop(username)
         user_write.close()
-        data_obj = {"command": "message",
-                    "result": {"username": "SERVER",
-                               "content": f"User {username} left chat"}}
+        data_obj = Reply("message", message=f"User {username} left chat",
+                         username="SERVER")
         asyncio.create_task(self._send_data_users(data_obj))
         asyncio.create_task(self.list_users())
         return True
@@ -60,10 +77,8 @@ class ServerChat:
             logger.info(f'{username} disconnected.')
             user_write = self.list_user.pop(username)
             user_write.close()
-
-            data_obj = {"command": "message",
-                        "result": {"username": "SERVER",
-                                   "content": f"User {username} left chat"}}
+            data_obj = Reply("message", message=f"User {username} left chat",
+                             username="SERVER")
             asyncio.create_task(self._send_data_users(data_obj))
             asyncio.create_task(self.list_users())
             return True
@@ -72,47 +87,32 @@ class ServerChat:
 
     async def send_message(self, data_obj, username):
         """Отправить сообщение"""
-        data_obj = {
-            "command": "message",
-            "result": {
-                "username": username,
-                "content": data_obj["content"]
-            }
-        }
+        data_obj = Reply("message", message=data_obj["content"],
+                         username=username)
         await self._send_data_users(data_obj)
 
     async def set_username(self, new_username, username):
         """Пользователь поменял ник"""
         if new_username in self.list_user:
-            data_obj = {
-                "command": "message",
-                "result": {
-                    "username": "SERVER",
-                    "content":
-                        f"Sorry but '{new_username}' already taken"
-                }
-            }
+            data_obj = Reply("message",
+                             message=f"Sorry but '{new_username}' already taken",
+                             username="SERVER")
             asyncio.create_task(self._send_data_to_user(username, data_obj))
             return False
         old_username = username
         writer = self.list_user.pop(username)
         self.list_user.update({new_username: writer})
-        data_obj = {
-            "command": "message",
-            "result": {
-                "username": "SERVER",
-                "content":
-                    f"user {old_username} change to f{new_username}"
-            }
-        }
+        data_obj = Reply("message",
+                         message=f"user {old_username} change to {new_username}",
+                         username="SERVER")
         asyncio.create_task(self._send_data_users(data_obj))
         asyncio.create_task(self.list_users())
         return True
 
     async def list_users(self):
         """список всех пользователей"""
-        data_obj = {"command": "list_users",
-                    "result": list(self.list_user.keys())}
+        data_obj = Reply("list_users",
+                         data=list(self.list_user.keys()))
         await self._send_data_users(data_obj)
 
     async def _wait_message(self, writer, reader, username):
@@ -148,15 +148,14 @@ class ServerChat:
         self.users_count += 1
         logger.info(f'Send username')
         # Даем обидное имя юзерю
-        writer.write(encode_dict(
-            {"command": "get_username",
-             "result": username}
-        ))
+        writer.write(encode_dict(Reply("get_username", data=username)))
         await writer.drain()
         # добавяем юзеря в список
         self.list_user.update({username: writer})
-        await self.send_message({"content": f"user {username} join to chat"},
-                                "SERVER")
+        await self.send_message(
+            Reply("message", message=f"user {username} join to chat",
+                  username="SERVER")
+        )
         await self.list_users()
         asyncio.create_task(self._wait_message(writer, reader, username))
 
