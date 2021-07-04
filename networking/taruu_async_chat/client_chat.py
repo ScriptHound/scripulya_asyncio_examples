@@ -109,7 +109,7 @@ class Application(tk.Frame):
     def save_username(self):
         """Изменить ник"""
         username = self.username_entry.get()
-        if username:
+        if username and username not in list(self.users_list_box.get(0, END)):
             self.now_username = username
             self._set_username(username)
             asyncio.create_task(
@@ -121,7 +121,6 @@ class Application(tk.Frame):
     def list_users(self, list_users):
         """Обновления списка пользователей"""
         old_list_users = list(self.users_list_box.get(0, END))
-        print(old_list_users)
         [self.users_list_box.delete(0) for _ in old_list_users]
         [self._add_user(user) for user in list_users]
 
@@ -141,11 +140,6 @@ class AsyncClient:
         self.work_client = True
         self.reader = None
         self.writer = None
-        # self.commands = {
-        #     "message": self.app.write_message,
-        #     "get_username": self.app.set_username,
-        #     "list_users": self.app.list_users
-        # }
 
     async def _tk_application_loop(self):
         """Финт ушами который позволяет нам запускать прогу в асинхроне"""

@@ -23,10 +23,17 @@ def encode_dict(data: dict):
     json_data = json.dumps(data).encode()
     return base64.b64encode(json_data) + b"\r\n"
 
+
 class ServerChat:
     def __init__(self):
         self.users_count = 1
         self.list_user = {}
+
+    async def _send_data_to_user(self, username, data_dict):
+        logger.info(f"Send data to user {username}: {data_dict}")
+        writer = self.list_user.get(username)
+        writer.write(encode_dict(data_dict))
+        await writer.drain()
 
     async def _send_data_users(self, data_dict):
         """Отправить данные всем пользователям"""
@@ -76,6 +83,17 @@ class ServerChat:
 
     async def set_username(self, new_username, username):
         """Пользователь поменял ник"""
+        if new_username in self.list_user:
+            data_obj = {
+                "command": "message",
+                "result": {
+                    "username": "SERVER",
+                    "content":
+                        f"Sorry but '{new_username}' already taken"
+                }
+            }
+            asyncio.create_task(self._send_data_to_user(username, data_obj))
+            return False
         old_username = username
         writer = self.list_user.pop(username)
         self.list_user.update({new_username: writer})
@@ -89,6 +107,7 @@ class ServerChat:
         }
         asyncio.create_task(self._send_data_users(data_obj))
         asyncio.create_task(self.list_users())
+        return True
 
     async def list_users(self):
         """список всех пользователей"""
@@ -100,9 +119,9 @@ class ServerChat:
         """Ждем сообщения от юзеря"""
         in_bytes = await reader.readline()
         if await self.user_disconnected(username, reader):
-            asyncio.create_task(self.list_users())
+            await self.list_users()
             return
-        logging.info(f'{in_bytes}')
+        logging.info(f'Received bytes {in_bytes}')
         data_obj = decode_dict(in_bytes)
         await self._command_reader(data_obj, username, writer, reader)
 
@@ -110,16 +129,16 @@ class ServerChat:
         """Выполняем команды"""
         if "disconnect" == data_obj["command"]:
             await self.user_exit(username)
-            asyncio.create_task(self.list_users())
+            await self.list_users()
             return False
         elif "message" == data_obj["command"]:
-            asyncio.create_task(self.send_message(data_obj["data"], username))
+            await self.send_message(data_obj["data"], username)
             asyncio.create_task(
                 self._wait_message(writer, reader, username))
         elif "set_username" == data_obj["command"]:
-            asyncio.create_task(self.set_username(data_obj["data"], username))
-            asyncio.create_task(
-                self._wait_message(writer, reader, data_obj["data"]))
+            if await self.set_username(data_obj["data"], username):
+                asyncio.create_task(
+                    self._wait_message(writer, reader, data_obj["data"]))
         return True
 
     async def handle_connection(self, reader, writer):
@@ -138,7 +157,7 @@ class ServerChat:
         self.list_user.update({username: writer})
         await self.send_message({"content": f"user {username} join to chat"},
                                 "SERVER")
-        asyncio.create_task(self.list_users())
+        await self.list_users()
         asyncio.create_task(self._wait_message(writer, reader, username))
 
 
