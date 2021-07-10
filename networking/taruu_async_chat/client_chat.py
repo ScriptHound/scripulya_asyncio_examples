@@ -15,9 +15,9 @@ def decode_dict(bytes_in: bytes):
 
 def encode_dict(data: dict):
     """Зашифруем словарь"""
+    data = dict(data)
     json_data = json.dumps(data).encode()
     return base64.b64encode(json_data) + b"\r\n"
-
 
 class Application(tk.Frame):
     """Класс приложения"""
