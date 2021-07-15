@@ -80,6 +80,7 @@ class WebSocketClient:
         pass
 
     async def relpy_client(self, message):
+        """"""
         logger.debug(f"Send relpy {message}")
         message = b"You foxgirl? Okey here you message: " + message.encode()
         await self.send_text(message)
@@ -180,9 +181,8 @@ class WebSocketClient:
         await self.writer.drain()
 
     async def read_next_message(self):
-        b1, b2 = await self.read_bytes(2)
         try:
-            pass
+            b1, b2 = await self.read_bytes(2)
         # except SocketError as e:  # to be replaced with ConnectionResetError for py3
         #     if e.errno == errno.ECONNRESET:
         #         logger.info("Client closed connection.")
