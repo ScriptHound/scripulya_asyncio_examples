@@ -146,8 +146,7 @@ class WebSocketClient:
 
     async def send_text(self, message, opcode=OPCODE_TEXT):
         """
-        Important: Fragmented(=continuation) messages are not supported since
-        their usage cases are limited - when we don't know the payload length.
+        Отправка текста
         """
 
         # Validate message
@@ -168,18 +167,16 @@ class WebSocketClient:
         payload = encode_to_UTF8(message)
         payload_length = len(payload)
 
-        # Normal payload
+        # Выбор длинны
         if payload_length <= 125:
             header.append(FIN | opcode)
             header.append(payload_length)
 
-        # Extended payload
         elif payload_length >= 126 and payload_length <= 65535:
             header.append(FIN | opcode)
             header.append(PAYLOAD_LEN_EXT16)
             header.extend(struct.pack(">H", payload_length))
 
-        # Huge extended payload
         elif payload_length < 18446744073709551616:
             header.append(FIN | opcode)
             header.append(PAYLOAD_LEN_EXT64)
@@ -195,7 +192,7 @@ class WebSocketClient:
         """Чтение следущего сообщения"""
         try:
             b1, b2 = await self.read_bytes(2)
-        except asyncio.IncompleteReadError as e:  # to be replaced with ConnectionResetError for py3
+        except asyncio.IncompleteReadError as e:
             if e.partial == 0:
                 logger.info("Client closed connection.")
                 self.keep_alive = False
@@ -204,15 +201,15 @@ class WebSocketClient:
         except ValueError as e:
             b1, b2 = 0, 0
 
-        # logger.debug(f"2 first_bytes {b1, b2}")
-
         fin = b1 & FIN
         opcode = b1 & OPCODE
         masked = b2 & MASKED
         payload_length = b2 & PAYLOAD_LEN
+
         logging.debug(
             f"""f:{fin} op:{opcode} ma:{masked} pay:{payload_length}""")
 
+        # Читаем опткоды
         if opcode == OPCODE_CLOSE_CONN:
             logger.info("Client asked to close connection.")
             self.keep_alive = False
@@ -243,11 +240,20 @@ class WebSocketClient:
         elif payload_length == 127:
             payload_length = struct.unpack(">Q", await self.reader.read(8))[0]
 
+        # Получаем маску
         masks = await self.read_bytes(4)
-        message_bytes = bytearray()
-        for message_byte in await self.read_bytes(payload_length):
-            message_byte ^= masks[len(message_bytes) % 4]
-            message_bytes.append(message_byte)
+
+        message_bytes = bytearray(
+            byte ^ masks[i % 4] for i, byte in enumerate(
+                await self.read_bytes(payload_length)))
+        # Вот если вы не поняли что это такое то я вам сейчас поясню
+        # Все данные в frame используют маску для храниния.
+        # И мы после просто должны пройтись по всем байтам и зафигачить маску
+
+        # for message_byte in await self.read_bytes(payload_length):
+        #     message_byte ^= masks[len(message_bytes) % 4]
+        #     message_bytes.append(message_byte)
+        logging.debug(bytes(message_bytes))
 
         data = try_decode_UTF8(message_bytes)
         logger.debug(f"data {bool(data)}")
