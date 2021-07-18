@@ -31,6 +31,16 @@ OPCODE_PONG = 0xA
 
 
 def encode_to_UTF8(data):
+    """У вас есть текст но нужны байты? Не беда! Используйте метод
+    encode_to_UTF8! Данный метод позволяет сделать все то же что
+    и обычный encode! Но с большей безопастностью и защитой. Если ваща программа
+    ломалась из за недохацкеров которые слали что то в другой кодировки
+    или же вообще слали обекты то теперь этой ошибки не повторится!
+    Используйте encode_to_UTF8! И ваши данные будут в порядке.
+
+    Имеются противопоказания перед вызовом требуется консультация с Middle или
+    Senior develper.
+    """
     try:
         return data.encode('UTF-8')
     except UnicodeEncodeError as e:
@@ -41,21 +51,16 @@ def encode_to_UTF8(data):
 
 
 def try_decode_UTF8(data):
+    """Какие то злодеи записали важное сообщение в байты? Негодяи не иначе!!!!
+    Но мы имеем технологию которая поможет вам спасти свои часы на поиски utf-8
+    Мы хотим вам представить try_decode_UTF8 данный
+    """
     try:
         return data.decode('utf-8')
     except UnicodeDecodeError:
         return False
     except Exception as e:
         raise (e)
-
-
-class HandlerData:
-    def __iter__(self):
-        pass
-
-
-def server_get_message(self, data):
-    logger.info(f"WebSocket get message: {data}")
 
 
 class WebSocketClient:
@@ -68,9 +73,11 @@ class WebSocketClient:
         self.keep_alive = True
         self.handshake_done = False
         self.valid_client = False
+        self.message_cache = b""
         pass
 
     async def client_watcher(self):
+        """Смотрим за вебсокетом"""
         while self.keep_alive:
             logger.debug(self.handshake_done)
             if not self.handshake_done:
@@ -80,17 +87,19 @@ class WebSocketClient:
         pass
 
     async def relpy_client(self, message):
-        """"""
-        logger.debug(f"Send relpy {message}")
+        """Ответ клиенту"""
         message = b"You foxgirl? Okey here you message: " + message.encode()
         await self.send_text(message)
 
     async def send_pong(self, message):
+        """Ответа на пинг"""
         await self.send_text(message, OPCODE_PONG)
 
     async def read_bytes(self, num):
+        """Читаем байты"""
         bytes = await self.reader.read(num)
-        logger.debug(f"bytes {num} {bytes}")
+        logger.debug(f"Read len byes {num}")
+        # logger.debug(f"bytes {num} {bytes}")
         return bytes
 
     async def read_http_headers(self):
@@ -111,6 +120,7 @@ class WebSocketClient:
         return headers
 
     async def handshake(self):
+        """Обмен рукопожатиями"""
         headers = await self.read_http_headers()
         try:
             assert headers['upgrade'].lower() == 'websocket'
@@ -124,8 +134,11 @@ class WebSocketClient:
             self.keep_alive = False
             return
 
-        logger.debug(f"KEY client: {key}")
+        logger.debug(f"Client client: {key}")
+
         response = self.make_handshake_response(key)
+        # Варим ответ для клиента
+
         logger.debug(response)
         self.writer.write(response.encode())
         await self.writer.drain()
@@ -147,7 +160,8 @@ class WebSocketClient:
                 return False
         else:
             logger.warning(
-                f'Can\'t send message, message has to be a string or bytes. Given type is {type(message)}')
+                f'Can\'t send message, message has to be a string or bytes. \
+            Given type is {type(message)}')
             return False
 
         header = bytearray()
@@ -170,48 +184,48 @@ class WebSocketClient:
             header.append(FIN | opcode)
             header.append(PAYLOAD_LEN_EXT64)
             header.extend(struct.pack(">Q", payload_length))
-
         else:
             raise Exception(
                 "Message is too big. Consider breaking it into chunks.")
-            return
 
-        logger.debug(f"to send {header + payload}")
         self.writer.write(header + payload)
         await self.writer.drain()
 
     async def read_next_message(self):
+        """Чтение следущего сообщения"""
         try:
             b1, b2 = await self.read_bytes(2)
-        # except SocketError as e:  # to be replaced with ConnectionResetError for py3
-        #     if e.errno == errno.ECONNRESET:
-        #         logger.info("Client closed connection.")
-        #         self.keep_alive = 0
-        #         return
-        #     b1, b2 = 0, 0
+        except asyncio.IncompleteReadError as e:  # to be replaced with ConnectionResetError for py3
+            if e.partial == 0:
+                logger.info("Client closed connection.")
+                self.keep_alive = False
+                return
+            b1, b2 = 0, 0
         except ValueError as e:
             b1, b2 = 0, 0
 
-        logger.debug(f"2 first_bytes {b1, b2}")
+        # logger.debug(f"2 first_bytes {b1, b2}")
 
         fin = b1 & FIN
         opcode = b1 & OPCODE
         masked = b2 & MASKED
         payload_length = b2 & PAYLOAD_LEN
+        logging.debug(
+            f"""f:{fin} op:{opcode} ma:{masked} pay:{payload_length}""")
 
         if opcode == OPCODE_CLOSE_CONN:
             logger.info("Client asked to close connection.")
-            self.keep_alive = 0
+            self.keep_alive = False
             return
         if not masked:
             # logger.warn("Client must always be masked.")
-            self.keep_alive = 0
+            self.keep_alive = False
             return
         if opcode == OPCODE_CONTINUATION:
-            logger.warn("Continuation frames are not supported.")
+            logger.warning("Continuation frames are not supported.")
             return
         elif opcode == OPCODE_BINARY:
-            logger.warn("Binary frames are not supported.")
+            logger.warning("Binary frames are not supported.")
             return
         elif opcode == OPCODE_TEXT:
             opcode_handler = self.relpy_client
@@ -220,14 +234,14 @@ class WebSocketClient:
         elif opcode == OPCODE_PONG:
             opcode_handler = self.send_pong
         else:
-            logger.warn("Unknown opcode %#x." % opcode)
-            self.keep_alive = 0
+            logger.warning("Unknown opcode %#x." % opcode)
+            self.keep_alive = False
             return
 
         if payload_length == 126:
             payload_length = struct.unpack(">H", await self.reader.read(2))[0]
         elif payload_length == 127:
-            payload_length = struct.unpack(">Q", self.reader.read(8))[0]
+            payload_length = struct.unpack(">Q", await self.reader.read(8))[0]
 
         masks = await self.read_bytes(4)
         message_bytes = bytearray()
@@ -235,8 +249,10 @@ class WebSocketClient:
             message_byte ^= masks[len(message_bytes) % 4]
             message_bytes.append(message_byte)
 
-        logger.debug(message_bytes)
-        await opcode_handler(message_bytes.decode('utf8'))
+        data = try_decode_UTF8(message_bytes)
+        logger.debug(f"data {bool(data)}")
+        if data:
+            await opcode_handler(data)
 
     @classmethod
     def make_handshake_response(cls, key):
@@ -247,31 +263,16 @@ Upgrade: websocket\r\n\r\n'''
 
     @classmethod
     def calculate_response_key(cls, key):
+        """Здесь происходит вычисление ключа для клинета"""
         GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'
         hash = sha1(key.encode() + GUID.encode())
         response_key = b64encode(hash.digest()).strip()
         return response_key.decode('ASCII')
 
 
-class SimpleWebSocketServer:
-    def __init__(self):
-        self.list_client = []
-
-
 async def handle_echo(reader, writer):
+    """Ловим клиента и пихаем его на досмотр"""
     asyncio.create_task(WebSocketClient(reader, writer).client_watcher())
-
-    # data = await reader.read(100)
-    # message = data.decode()
-    # addr = writer.get_extra_info('peername')
-    #
-    # print(f"Received {message!r} from {addr!r}")
-    #
-    # print(f"Send: {message!r}")
-    # writer.write(data)
-    # await writer.drain()
-    #
-    # print("Close the connection")
 
 
 async def main():
@@ -279,7 +280,7 @@ async def main():
         handle_echo, 'localhost', 8081)
 
     addr = server.sockets[0].getsockname()
-    print(f'Serving on {addr}')
+    logging.info(f'Serving on {addr}')
 
     async with server:
         await server.serve_forever()
