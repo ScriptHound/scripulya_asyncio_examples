@@ -136,10 +136,8 @@ class WebSocketClient:
 
         logger.debug(f"Client client: {key}")
 
-        response = self.make_handshake_response(key)
         # Варим ответ для клиента
-
-        logger.debug(response)
+        response = self.make_handshake_response(key)
         self.writer.write(response.encode())
         await self.writer.drain()
         self.handshake_done = True
@@ -282,6 +280,7 @@ async def handle_echo(reader, writer):
 
 
 async def main():
+    """Работай чертила..."""
     server = await asyncio.start_server(
         handle_echo, 'localhost', 8081)
 
