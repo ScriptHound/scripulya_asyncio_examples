@@ -12,7 +12,7 @@ import asyncio
 logging.basicConfig(
     format="\033[36m %(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 # Я копипастер! И я этим да
 FIN = 0x80
@@ -135,7 +135,7 @@ class WebSocketClient:
             return
 
         logger.debug(f"Client client: {key}")
-
+        logging.info(f"Client {hash(self.reader)} handshake")
         # Варим ответ для клиента
         response = self.make_handshake_response(key)
         self.writer.write(response.encode())
@@ -183,6 +183,7 @@ class WebSocketClient:
             raise Exception(
                 "Message is too big. Consider breaking it into chunks.")
 
+        logging.info(f"Client {hash(self.reader)} send echo")
         self.writer.write(header + payload)
         await self.writer.drain()
 
@@ -203,13 +204,13 @@ class WebSocketClient:
         opcode = b1 & OPCODE
         masked = b2 & MASKED
         payload_length = b2 & PAYLOAD_LEN
-
+        logging.info(f"Client {hash(self.reader)} get message")
         logging.debug(
             f"""f:{fin} op:{opcode} ma:{masked} pay:{payload_length}""")
 
         # Читаем опткоды
         if opcode == OPCODE_CLOSE_CONN:
-            logger.info("Client asked to close connection.")
+            logger.info(f"Client {hash(self.reader)} asked to close connection.")
             self.keep_alive = False
             return
         if not masked:
@@ -276,6 +277,7 @@ Upgrade: websocket\r\n\r\n'''
 
 async def handle_echo(reader, writer):
     """Ловим клиента и пихаем его на досмотр"""
+    logging.info(f"Connected new client {hash(reader)}")
     asyncio.create_task(WebSocketClient(reader, writer).client_watcher())
 
 
