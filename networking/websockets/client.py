@@ -8,8 +8,8 @@ from itertools import cycle
 
 import webob
 
-from networking.websockets.constants import (
-    OPCODE_CLOSE_CONN, OPCODE_TEXT)
+from constants import (
+    OPCODE_CLOSE_CONN, OPCODE_TEXT, PAYLOAD_LEN)
 
 logger = logging.getLogger(__name__)
 logging.basicConfig()
@@ -34,14 +34,16 @@ def make_opening_handshake(host, port):
         "REQUEST_METHOD": "GET",
         "SERVER_NAME": host,
         "SERVER_PORT": port,
-        "SERVER_PROTOCOL": "HTTP/1.0",
+        "SERVER_PROTOCOL": "HTTP/1.1",
         "wsgi.url_scheme": "http",
         "wsgi.version": (1, 0),
     }
     message = webob.Request(environ=environ)
     message.headers["Upgrade"] = "websocket"
+    message.headers["Connection"] = "Upgrade"
     # this header is hardcoded
     message.headers["Sec-WebSocket-Key"] = "AQIDBAUGBwgJCgsMDQ4PEC=="
+    message.headers["Sec-WebSocket-Version"] = 13
     message = str(message) + "\r\n\r\n"
     return message
 
@@ -49,6 +51,22 @@ def make_opening_handshake(host, port):
 def mask(mask, data):
     """Mask should be 4 bytes length"""
     return bytes(a ^ b for a, b in zip(cycle(mask), data))
+
+
+def unpack_massage(message):
+    header_two = message[1]
+    payload_length = header_two & PAYLOAD_LEN
+    
+    payload_starting_byte = 4
+    if payload_length == 126:
+        payload_length = struct.unpack(">H", message[2:4])[0]
+    elif payload_length == 127:
+        payload_length = struct.unpack(">Q", message[2:11])[0]
+        payload_starting_byte = 11
+    
+    logger.info(f"Payload length is: {payload_length}")
+    payload = message[payload_starting_byte:]
+    return payload
 
 
 def wrap_message(message, opcode=OPCODE_TEXT):
@@ -98,6 +116,9 @@ async def tcp_echo_client(host="127.0.0.1", port=9001):
     writer.write(resp)
     await writer.drain()
 
+    resp = await reader.read(1024)
+    resp = unpack_massage(resp)
+    logger.info(f"Response from server is: {resp}")
     logger.info("Close the connection")
     closing_frame = make_closing_frame()
     writer.write(closing_frame)
@@ -108,4 +129,4 @@ async def tcp_echo_client(host="127.0.0.1", port=9001):
 
 
 # attention, default port and host are 127.0.0.1:9001
-asyncio.run(tcp_echo_client())
+asyncio.run(tcp_echo_client(host='localhost', port=9001))
