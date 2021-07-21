@@ -1,46 +1,20 @@
 import asyncio
-import base64
-import json
-import logging
 import struct
 from base64 import b64encode
 from hashlib import sha1
-import pprint
+
+import logging
 import logging.handlers
-import asyncio
+from networking.websockets.constants import *
 
 logging.basicConfig(
     format="\033[36m %(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-# Я копипастер! И я этим да
-FIN = 0x80
-OPCODE = 0x0f
-MASKED = 0x80
-PAYLOAD_LEN = 0x7f
-PAYLOAD_LEN_EXT16 = 0x7e
-PAYLOAD_LEN_EXT64 = 0x7f
-
-OPCODE_CONTINUATION = 0x0
-OPCODE_TEXT = 0x1
-OPCODE_BINARY = 0x2
-OPCODE_CLOSE_CONN = 0x8
-OPCODE_PING = 0x9
-OPCODE_PONG = 0xA
-
 
 def encode_to_UTF8(data):
-    """У вас есть текст но нужны байты? Не беда! Используйте метод
-    encode_to_UTF8! Данный метод позволяет сделать все то же что
-    и обычный encode! Но с большей безопастностью и защитой. Если ваща программа
-    ломалась из за недохацкеров которые слали что то в другой кодировки
-    или же вообще слали обекты то теперь этой ошибки не повторится!
-    Используйте encode_to_UTF8! И ваши данные будут в порядке.
-
-    Имеются противопоказания перед вызовом требуется консультация с Middle или
-    Senior develper.
-    """
+    """Кодируем сообщение"""
     try:
         return data.encode('UTF-8')
     except UnicodeEncodeError as e:
@@ -51,10 +25,7 @@ def encode_to_UTF8(data):
 
 
 def try_decode_UTF8(data):
-    """Какие то злодеи записали важное сообщение в байты? Негодяи не иначе!!!!
-    Но мы имеем технологию которая поможет вам спасти свои часы на поиски utf-8
-    Мы хотим вам представить try_decode_UTF8 данный
-    """
+    """Декодирование сообщения"""
     try:
         return data.decode('utf-8')
     except UnicodeDecodeError:
@@ -74,7 +45,6 @@ class WebSocketClient:
         self.handshake_done = False
         self.valid_client = False
         self.message_cache = b""
-        pass
 
     async def client_watcher(self):
         """Смотрим за вебсокетом"""
@@ -84,7 +54,6 @@ class WebSocketClient:
                 await self.handshake()
             else:
                 await self.read_next_message()
-        pass
 
     async def relpy_client(self, message):
         """Ответ клиенту"""
@@ -99,13 +68,11 @@ class WebSocketClient:
         """Читаем байты"""
         bytes = await self.reader.read(num)
         logger.debug(f"Read len byes {num}")
-        # logger.debug(f"bytes {num} {bytes}")
         return bytes
 
     async def read_http_headers(self):
         """Чтения твоей головы бро"""
         headers = {}
-        # first line should be HTTP GET
         http_get = await self.reader.readline()
         http_get = http_get.decode().strip()
         assert http_get.upper().startswith('GET')
@@ -143,9 +110,7 @@ class WebSocketClient:
         self.handshake_done = True
 
     async def send_text(self, message, opcode=OPCODE_TEXT):
-        """
-        Отправка текста
-        """
+        """Шлем текст клиенту"""
 
         # Validate message
         if isinstance(message, bytes):
@@ -188,7 +153,7 @@ class WebSocketClient:
         await self.writer.drain()
 
     async def read_next_message(self):
-        """Чтение следущего сообщения"""
+        """Чтение следущего фрейма"""
         try:
             b1, b2 = await self.read_bytes(2)
         except asyncio.IncompleteReadError as e:
@@ -210,11 +175,12 @@ class WebSocketClient:
 
         # Читаем опткоды
         if opcode == OPCODE_CLOSE_CONN:
-            logger.info(f"Client {hash(self.reader)} asked to close connection.")
+            logger.info(
+                f"Client {hash(self.reader)} asked to close connection.")
             self.keep_alive = False
             return
         if not masked:
-            # logger.warn("Client must always be masked.")
+            logger.warning("Client must always be masked.")
             self.keep_alive = False
             return
         if opcode == OPCODE_CONTINUATION:
@@ -245,15 +211,6 @@ class WebSocketClient:
         message_bytes = bytearray(
             byte ^ masks[i % 4] for i, byte in enumerate(
                 await self.read_bytes(payload_length)))
-        # Вот если вы не поняли что это такое то я вам сейчас поясню
-        # Все данные в frame используют маску для храниния.
-        # И мы после просто должны пройтись по всем байтам и зафигачить маску
-
-        # for message_byte in await self.read_bytes(payload_length):
-        #     message_byte ^= masks[len(message_bytes) % 4]
-        #     message_bytes.append(message_byte)
-        logging.debug(bytes(message_bytes))
-
         data = try_decode_UTF8(message_bytes)
         logger.debug(f"data {bool(data)}")
         if data:
@@ -261,6 +218,7 @@ class WebSocketClient:
 
     @classmethod
     def make_handshake_response(cls, key):
+        """Комякает ответ"""
         return f'''HTTP/1.1 101 Switching Protocols\r
 Connection: Upgrade\r
 Sec-WebSocket-Accept: {cls.calculate_response_key(key)}
