@@ -34,7 +34,7 @@ def try_decode_UTF8(data):
         raise (e)
 
 
-class WebSocketClient:
+class WebSocketServer:
     """Клиент вебсокета"""
 
     def __init__(self, reader: asyncio.StreamReader,
@@ -236,7 +236,7 @@ Upgrade: websocket\r\n\r\n'''
 async def handle_echo(reader, writer):
     """Ловим клиента и пихаем его на досмотр"""
     logging.info(f"Connected new client {hash(reader)}")
-    asyncio.create_task(WebSocketClient(reader, writer).client_watcher())
+    asyncio.create_task(WebSocketServer(reader, writer).client_watcher())
 
 
 async def main():
