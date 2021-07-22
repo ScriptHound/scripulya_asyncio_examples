@@ -35,7 +35,7 @@ def try_decode_UTF8(data):
 
 
 class WebSocketServer:
-    """Клиент вебсокета"""
+    """Не Клиент а Сервер вебсокета"""
 
     def __init__(self, reader: asyncio.StreamReader,
                  writer: asyncio.StreamWriter):
