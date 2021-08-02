@@ -10,6 +10,8 @@ class TaskQueue:
         self.consumers = []
 
     async def _consumer(self, pool):
+        # This loop is not freezing, it only makes
+        # consumer do tasks forever
         while True:
             function = await self._queue.get()
 
@@ -21,6 +23,8 @@ class TaskQueue:
         await self._queue.put(task)
 
     async def run_tasks(self):
+        # here are 10 workers created and then wait until
+        # all tasks done
         with concurrent.futures.ProcessPoolExecutor() as pool:
             consumers = [asyncio.create_task(
                 self._consumer(pool))
