@@ -17,6 +17,9 @@ def some_coroutine():
 
 
 def event_loop(coroutines):
+    # using list instead of deque for clarity reasons
+    # but implementation with deque is recommended for this
+    # should be round robin algothitm
     generators = [c() for c in coroutines]
 
     while generators != []:
