@@ -41,6 +41,7 @@ def send_message(client_socket):
 def connection_handler():
     events = selector.select()
     for key, _ in events:
+        #Немного шизы. словесной шизы
         method = key.data
         method(key.fileobj)
 

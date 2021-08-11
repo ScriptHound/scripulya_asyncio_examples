@@ -2,7 +2,6 @@ from networking.web_framework.core import (
     add_route, run_app
 )
 
-
 @add_route(route='/my_another_view')
 async def another_view(request):
     return "Hey I'm an another view"
