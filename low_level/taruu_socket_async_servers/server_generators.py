@@ -14,77 +14,73 @@ list_connections_to_write = []
 
 
 def server_init():
+    """Иницилизация сервера сокетов"""
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server_socket.setblocking(False)
     server_socket.bind(('localhost', 5000))
     server_socket.listen()
     generators_queue.append(accept_connection(server_socket))
-    generators_queue.append(check_ready())
+    generators_queue.append(handle_connection())
 
 
 def accept_connection(server_socket):
+    """Вечный генератор для соеденений"""
     while True:
         yield
         try:
-            client_socket, addr = server_socket.accept()
-            logger.info(f"Connected form {addr}")
+            client_socket, address = server_socket.accept()
+            logger.info(f"Accept connected form \t{address}")
             list_connections_to_read.append(client_socket)
-            # generators_queue.append(receive_message(client_socket))
         except:
             continue
 
 
-def check_ready():
-    logging.info("test")
+def handle_connection():
+    """Ловим сокеты которые готовы выдать к нам данные"""
     while True:
         yield
         # активируем 0 timeout что бы не было блокировки процессов
-        ready_to_read, ready_to_write, [] = select(list_connections_to_read,
-                                                   list_connections_to_write,
-                                                   [], 0.0001)
+        ready_to_read, *_ = select(list_connections_to_read, [], [], 0)
         for sock_ready in ready_to_read:
-            generators_queue.append(
-                receive_message(sock_ready))
+            address = sock_ready.__repr__().replace('<', '').split('=')[-1][:-1]
+            logger.info(f"Ready to read from \t{address}")
+            generators_queue.append(receive_message(sock_ready))
             list_connections_to_read.remove(sock_ready)
-
-        # for sock_ready in ready_to_write:
-        #     generators_queue.append(
-        #         send_message(list_connections_to_write.pop(sock_ready),
-        #                      b"test"))
 
 
 def receive_message(client_socket):
+    """Чтение сообщения"""
     yield
     request = client_socket.recv(1024)
     if request:
         message = "You data: ".encode() + request
-        logger.info(f"get message {message}")
+        # делаем корутину на отправку сообщения
         generators_queue.append(send_message(client_socket, message))
-        list_connections_to_read.append(client_socket)
     else:
         client_socket.close()
 
 
 def send_message(client_socket, message):
+    """Отправку сообщения в сокет"""
     yield
-    logger.info("Send message to client")
+    address = client_socket.__repr__().replace('<', '').split('=')[-1][:-1]
+    logger.info(f"Send reply to client\t{address}")
     client_socket.send(message)
+    # сокет в очередь
+    list_connections_to_read.append(client_socket)
 
 
 def close_client(client_socket):
+    """Закрываем сокет"""
     yield
     logger.info("Client exit")
     client_socket.close()
 
 
 def generator_handler():
-    old_task = generators_queue.copy()
+    """Главный обработчик"""
     while True:
-        if old_task != generators_queue:
-            logger.info(f"{generators_queue}")
-            old_task = generators_queue
-
         task = generators_queue.popleft()
         try:
             next(task)
