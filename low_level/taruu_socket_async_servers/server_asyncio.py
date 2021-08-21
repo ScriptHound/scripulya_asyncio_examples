@@ -1,8 +1,9 @@
 import socket
-from select import select
-import logging
-from collections import deque
 import time
+import logging
+from select import select
+from collections import deque
+import asyncio
 
 logging.basicConfig(
     format="\033[36m %(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -14,18 +15,6 @@ list_connections_to_read = []
 list_connections_to_write = []
 
 
-class CoroSleep:
-    """Мы сделали свой крутой sleep! (нет)"""
-    def __init__(self, time_to_sleep=0.0):
-        self.time_to_execute = time.time() + time_to_sleep
-
-    def __await__(self):
-        while time.time() < self.time_to_execute:
-            yield "not call"
-        else:
-            yield "done"
-
-
 def server_init():
     """Иницилизация сервера сокетов"""
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -35,18 +24,17 @@ def server_init():
     server_socket.listen()
     logger.info("server start on localhost 5000")
 
-    generators_queue.append(accept_connection(server_socket))
-    generators_queue.append(handle_connection())
+    asyncio.create_task(accept_connection(server_socket))
+    asyncio.create_task(handle_connection())
 
 
 async def accept_connection(server_socket):
     """Вечный генератор для соеденений"""
     while True:
-        await CoroSleep()
+        await asyncio.sleep(0)
         try:
             client_socket, address = server_socket.accept()
             logger.info(f"Accept connected form \t{address}")
-
             list_connections_to_read.append(client_socket)
         except:
             continue
@@ -55,14 +43,14 @@ async def accept_connection(server_socket):
 async def handle_connection():
     """Ловим сокеты которые готовы выдать к нам данные"""
     while True:
+        await asyncio.sleep(0)
         # активируем 0 timeout что бы не было блокировки процессов
-        await CoroSleep()
         ready_to_read, *_ = select(list_connections_to_read, [], [], 0)
         for sock_ready in ready_to_read:
             address = sock_ready.__repr__().replace('<', '').split('=')[-1][:-1]
             logger.info(f"Ready to read from \t{address}")
 
-            generators_queue.append(receive_message(sock_ready))
+            asyncio.create_task(receive_message(sock_ready))
             list_connections_to_read.remove(sock_ready)
 
 
@@ -95,19 +83,11 @@ async def close_client(client_socket):
     return
 
 
-def generator_handler():
-    """Главный обработчик"""
+async def main():
+    server_init()
     while True:
-        task = generators_queue.popleft()
-        try:
-            task.send(None)
-            generators_queue.append(task)
-        except StopIteration:
-            continue
-        except Exception as e:
-            logging.error(f"e {e}")
+        await asyncio.sleep(0)
 
 
 if __name__ == '__main__':
-    server_init()
-    generator_handler()
+    asyncio.run(main())
